@@ -155,3 +155,6 @@ spec:
 ![Profile Views](https://komarev.com/ghpvc/?username=peter4you58-lab&color=00d4ff&style=for-the-badge)
 
 </div>
+## 📚 Full Documentation
+View the complete step-by-step deployment documentation here:
+👉 [DevOps Bank App Documentation]([https://probable-tempo-b27.notion.site](https://probable-tempo-b27.notion.site/devops-bank-app-documentation-35eb9889ab01808b8b01dcc118ae0ad1?source=copy_link)
