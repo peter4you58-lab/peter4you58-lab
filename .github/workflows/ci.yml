@@ -20,26 +20,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
+- name: Set up Python 3.11
+      run: |
+        export PATH="$HOME/python/bin:$PATH"
+        python3 --version
 
-      - name: Install dependencies
-        run: |
-          cd app
-          pip install -r requirements.txt
-          pip install pytest flake8
+    - name: Install dependencies
+      run: |
+        export PATH="$HOME/python/bin:$PATH"
+        cd app
+        python3 -m pip install -r requirements.txt
+        python3 -m pip install pytest flake8
 
-      - name: Lint (flake8)
-        run: |
-          cd app
-          flake8 src/ --max-line-length=120
+    - name: Lint (flake8)
+      run: |
+        export PATH="$HOME/python/bin:$PATH"
+        cd app
+        flake8 src/ --max-line-length=120
 
-      - name: Unit tests
-        run: |
-          cd app
-          pytest tests/ -v --tb=short
+    - name: Unit tests
+      run: |
+        export PATH="$HOME/python/bin:$PATH"
+        cd app
+        pytest tests/ -v --tb=short
 
   # ── 2. Terraform validate ──────────────────────────────────────────────────
   terraform-validate:
