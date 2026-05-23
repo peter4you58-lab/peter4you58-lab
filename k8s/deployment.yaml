@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  namespace: production
+  labels:
+    app: myapp
+    version: "1.0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0   # zero-downtime rollouts
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # ── Pod-level security ───────────────────────────────────────────────────
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 2000
+
+      containers:
+        - name: myapp
+          # Replace YOUR_ECR_REGISTRY at deploy time via Helm / CI --set flag
+          image: YOUR_ECR_REGISTRY/devops-portfolio-app:1.0.0
+          ports:
+            - containerPort: 5000
+              name: http
+
+          env:
+            - name: ENVIRONMENT
+              value: "production"
+            - name: PORT
+              value: "5000"
+            - name: APP_VERSION
+              value: "1.0.0"
+            # DATABASE_URL built from the RDS secret stored in AWS Secrets Manager
+            # and synced to Kubernetes by External Secrets Operator.
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: rds-credentials
+                  key: database_url
+
+          # ── Resource budget (required for HPA) ──────────────────────────────
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+
+          # ── Probes ───────────────────────────────────────────────────────────
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /ready       # now checks DB connectivity
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          # ── Container-level security ─────────────────────────────────────────
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+
+          # Mount tmpfs so gunicorn can write heartbeat / pid files
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+      # ── Spread pods across nodes for HA ─────────────────────────────────────
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: myapp

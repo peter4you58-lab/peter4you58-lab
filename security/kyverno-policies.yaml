@@ -1,0 +1,140 @@
+# ── Policy 1: No privileged containers ────────────────────────────────────────
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/description: >-
+      Privileged containers have access to all Linux capabilities and host resources.
+      This policy ensures no containers run as privileged.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-privileged-containers
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Privileged containers are not allowed."
+        pattern:
+          spec:
+            containers:
+              - =(securityContext):
+                  =(privileged): "false"
+
+---
+# ── Policy 2: Containers must run as non-root ─────────────────────────────────
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-non-root-user
+  annotations:
+    policies.kyverno.io/title: Require Non-Root User
+    policies.kyverno.io/description: Containers must not run as root.
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: check-runasnonroot
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+      validate:
+        message: "Containers must run as non-root user."
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+
+---
+# ── Policy 3: No 'latest' image tag in production ─────────────────────────────
+# Set to Audit during initial rollout so existing workloads are not blocked.
+# Change to Enforce once all images use explicit version tags.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/description: >-
+      The 'latest' tag is mutable and causes unpredictable deployments.
+      Require specific, immutable image tags in production.
+spec:
+  validationFailureAction: Audit   # Change to Enforce after migration
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [production]
+      validate:
+        message: "Image tag 'latest' is not allowed in production. Use a specific version tag (e.g. git SHA)."
+        pattern:
+          spec:
+            containers:
+              - image: "*:*"
+                (image): "!*:latest"
+
+---
+# ── Policy 4: Require resource limits ────────────────────────────────────────
+# Without limits, a runaway pod can starve other workloads and break HPA.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/description: >-
+      All containers must declare CPU and memory limits.
+      This is required for HPA to work correctly.
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: check-container-resources
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [production]
+      validate:
+        message: "CPU and memory limits are required for all containers in production."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    cpu: "?*"
+                    memory: "?*"
+
+---
+# ── Policy 5: Drop ALL Linux capabilities ─────────────────────────────────────
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: drop-all-capabilities
+  annotations:
+    policies.kyverno.io/title: Drop All Linux Capabilities
+    policies.kyverno.io/description: >-
+      All containers must drop all Linux capabilities to reduce the attack surface.
+spec:
+  validationFailureAction: Enforce
+  rules:
+    - name: drop-all-caps
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [production]
+      validate:
+        message: "Containers must drop all Linux capabilities."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop:
+                      - ALL

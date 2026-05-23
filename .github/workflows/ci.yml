@@ -1,0 +1,134 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: devops-portfolio-app
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  # ── 1. Test & lint ─────────────────────────────────────────────────────────
+  test:
+    name: 🧪 Test & Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          cd app
+          pip install -r requirements.txt
+          pip install pytest flake8
+
+      - name: Lint (flake8)
+        run: |
+          cd app
+          flake8 src/ --max-line-length=120
+
+      - name: Unit tests
+        run: |
+          cd app
+          pytest tests/ -v --tb=short
+
+  # ── 2. Terraform validate ──────────────────────────────────────────────────
+  terraform-validate:
+    name: 🏗️ Terraform Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform format check
+        run: terraform fmt -check -recursive terraform/
+
+      - name: Terraform init (no backend)
+        run: |
+          cd terraform/environments/dev
+          terraform init -backend=false
+
+      - name: Terraform validate
+        run: |
+          cd terraform/environments/dev
+          terraform validate
+
+  # ── 3. Security scan ───────────────────────────────────────────────────────
+  security-scan:
+    name: 🔒 Security Scan
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: docker build -t $ECR_REPOSITORY:$IMAGE_TAG ./app
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: "CRITICAL,HIGH"
+
+  # ── 4. Build & push to ECR (main branch only) ──────────────────────────────
+  build:
+    name: 🐳 Build & Push to ECR
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      # Pass the exact image tag to the CD workflow so it deploys the right image
+      image_tag: ${{ env.IMAGE_TAG }}
+      ecr_registry: ${{ steps.login-ecr.outputs.registry }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          # Tag with the exact git SHA — never "latest" in production
+          docker build \
+            -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
+            ./app
+
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
+          echo "Pushed: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+      - name: Save image tag artifact
+        run: echo "$IMAGE_TAG" > image_tag.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-tag
+          path: image_tag.txt
+          retention-days: 1

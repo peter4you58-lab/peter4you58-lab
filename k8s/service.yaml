@@ -1,0 +1,52 @@
+# Service — exposes myapp pods inside the cluster
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp
+  namespace: production
+  labels:
+    app: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 5000
+      name: http
+  type: ClusterIP
+
+---
+# NetworkPolicy — zero-trust: only ingress-nginx may reach app pods;
+# app pods may only call HTTPS (443) and Postgres (5432) outbound.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: myapp-network-policy
+  namespace: production
+spec:
+  podSelector:
+    matchLabels:
+      app: myapp
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443   # AWS API calls (Secrets Manager, ECR)
+        - protocol: TCP
+          port: 5432  # RDS PostgreSQL
+        - protocol: UDP
+          port: 53    # DNS resolution
+
+# NOTE: HPA is managed by Helm (helm/myapp/values.yaml → autoscaling section).
+# Do NOT apply a separate HPA manifest alongside Helm — they will conflict.
