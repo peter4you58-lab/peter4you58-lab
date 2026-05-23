@@ -19,5 +19,5 @@ variable "vpc_cidr" {
 variable "allowed_cidr_blocks" {
   description = "CIDR blocks allowed to reach the EKS public API endpoint"
   type        = list(string)
-  default     = ["0.0.0.0/0"]   # Replace with your IP before applying
+  default     = ["0.0.0.0/0"] # Replace with your IP before applying
 }

@@ -45,7 +45,7 @@ variable "max_nodes" {
 variable "allowed_cidr_blocks" {
   description = "CIDR blocks allowed to reach the EKS public API endpoint (e.g. your office/VPN IP)"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Override in environments/*/main.tf
+  default     = ["0.0.0.0/0"] # Override in environments/*/main.tf
 }
 
 # IAM Role for EKS Cluster
@@ -81,7 +81,7 @@ resource "aws_eks_cluster" "main" {
     endpoint_public_access  = true
     # Restrict kubectl access to your own IP / VPN range.
     # Replace with your actual CIDR or set to [] and use only private access.
-    public_access_cidrs     = var.allowed_cidr_blocks
+    public_access_cidrs = var.allowed_cidr_blocks
   }
 
   tags = {

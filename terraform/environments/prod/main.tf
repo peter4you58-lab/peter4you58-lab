@@ -47,7 +47,7 @@ module "eks" {
   environment         = var.environment
   vpc_id              = module.vpc.vpc_id
   private_subnet_ids  = module.vpc.private_subnet_ids
-  node_instance_type  = "t3.large"   # Larger instances for prod workloads
+  node_instance_type  = "t3.large" # Larger instances for prod workloads
   desired_nodes       = 3
   min_nodes           = 2
   max_nodes           = 10
@@ -59,7 +59,7 @@ module "rds" {
   environment        = var.environment
   vpc_id             = module.vpc.vpc_id
   private_subnet_ids = module.vpc.private_subnet_ids
-  db_instance_class  = "db.t3.small"  # Upgrade to db.r6g.large for production traffic
+  db_instance_class  = "db.t3.small" # Upgrade to db.r6g.large for production traffic
 }
 
 output "eks_cluster_name" {

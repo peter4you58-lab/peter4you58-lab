@@ -14,7 +14,7 @@ terraform {
   # Remote state — REQUIRED before working in a team or deploying from CI.
   # Pre-create the S3 bucket and DynamoDB table once, then uncomment:
   #
-backend "s3" {
+  backend "s3" {
     bucket         = "terraform-state-717788071385"
     key            = "dev/terraform.tfstate"
     region         = "us-east-1"
@@ -44,15 +44,15 @@ module "vpc" {
 }
 
 module "eks" {
-  source              = "../../modules/eks"
-  cluster_name        = "${var.environment}-devops-portfolio-cluster"
-  environment         = var.environment
-  vpc_id              = module.vpc.vpc_id
-  private_subnet_ids  = module.vpc.private_subnet_ids
-  node_instance_type  = "t3.medium"
-  desired_nodes       = 2
-  min_nodes           = 1
-  max_nodes           = 3
+  source             = "../../modules/eks"
+  cluster_name       = "${var.environment}-devops-portfolio-cluster"
+  environment        = var.environment
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
+  node_instance_type = "t3.medium"
+  desired_nodes      = 2
+  min_nodes          = 1
+  max_nodes          = 3
   # Replace with your own IP/VPN range — avoids exposing kubectl to the internet
   allowed_cidr_blocks = var.allowed_cidr_blocks
 }
