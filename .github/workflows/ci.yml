@@ -15,7 +15,7 @@ jobs:
   # ── 1. Test & lint ─────────────────────────────────────────────────────────
   test:
     name: 🧪 Test & Lint
-    runs-on: ubuntu-latest
+    runs-on:  self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
   # ── 2. Terraform validate ──────────────────────────────────────────────────
   terraform-validate:
     name: 🏗️ Terraform Validate
-    runs-on: ubuntu-latest
+    runs-on:  self-hosted
 
     steps:
       - uses: actions/checkout@v4
@@ -69,7 +69,7 @@ jobs:
   # ── 3. Security scan ───────────────────────────────────────────────────────
   security-scan:
     name: 🔒 Security Scan
-    runs-on: ubuntu-latest
+    runs-on:  self-hosted
     needs: test
 
     steps:
@@ -90,7 +90,7 @@ jobs:
   # ── 4. Build & push to ECR (main branch only) ──────────────────────────────
   build:
     name: 🐳 Build & Push to ECR
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [test, security-scan]
     if: github.ref == 'refs/heads/main'
     outputs:
