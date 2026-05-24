@@ -9,11 +9,10 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: devops-portfolio-app
-  EKS_CLUSTER_NAME: dev-devops-portfolio-cluster
 
 jobs:
   deploy:
-    name: 🚀 Deploy to EKS
+    name: 🚀 Deploy to k3s
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     environment: production
@@ -21,9 +20,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Download the image tag that CI actually pushed — NOT github.sha
-      # (in workflow_run events, github.sha is the SHA of this workflow's
-      # commit, which may differ from what CI built when triggered by a push)
       - name: Download image tag artifact
         uses: actions/download-artifact@v4
         with:
@@ -45,11 +41,18 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Update kubeconfig
+      - name: Set up kubeconfig
         run: |
-          aws eks update-kubeconfig \
-            --name $EKS_CLUSTER_NAME \
-            --region $AWS_REGION
+          echo "${{ secrets.K3S_KUBECONFIG_B64 }}" | base64 -d > /tmp/k3s-config.yaml
+          echo "KUBECONFIG=/tmp/k3s-config.yaml" >> $GITHUB_ENV
+
+      - name: Create ECR pull secret
+        run: |
+          kubectl create secret docker-registry ecr-registry \
+            --docker-server=${{ steps.login-ecr.outputs.registry }} \
+            --docker-username=AWS \
+            --docker-password=$(aws ecr get-login-password --region $AWS_REGION) \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - uses: azure/setup-helm@v3
         with:
@@ -60,59 +63,18 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
           helm upgrade --install myapp ./helm/myapp \
-            --namespace production \
-            --create-namespace \
             --set image.repository=$ECR_REGISTRY/$ECR_REPOSITORY \
-            --set image.tag=${{ env.IMAGE_TAG }} \
-            --set environment=production \
-            --atomic \
-            --timeout 5m \
-            --cleanup-on-fail
+            --set image.tag=$IMAGE_TAG \
+            --set image.pullPolicy=Always \
+            --set imagePullSecrets[0].name=ecr-registry \
+            --atomic --timeout 3m
 
       - name: Verify rollout
-        run: |
-          kubectl rollout status deployment/myapp -n production --timeout=3m
-          kubectl get pods -n production
+        run: kubectl rollout status deployment/myapp --timeout=120s
 
-      # ── Slack notifications ─────────────────────────────────────────────────
       - name: Notify Slack on success
         if: success()
         uses: slackapi/slack-github-action@v1.24.0
         with:
           payload: |
-            {
-              "text": "✅ Deployment successful!",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "✅ *Deployment Successful*\n*Repo:* ${{ github.repository }}\n*Image:* `${{ env.IMAGE_TAG }}`\n*By:* ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
-
-      - name: Notify Slack on failure
-        if: failure()
-        uses: slackapi/slack-github-action@v1.24.0
-        with:
-          payload: |
-            {
-              "text": "❌ Deployment failed!",
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "❌ *Deployment Failed*\n*Repo:* ${{ github.repository }}\n*Image:* `${{ env.IMAGE_TAG }}`\n*By:* ${{ github.actor }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
-                  }
-                }
-              ]
-            }
-        env:
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+            {"text": "✅
